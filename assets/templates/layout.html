@@ -1,0 +1,115 @@
+{% extends "!layout.html" %} {% block extrahead %}
+ 
+<script type="text/javascript">
+    function convertAndCapitalize(inputString) {
+        // Replace underscores with spaces
+        var stringWithSpaces = inputString.replace(/_/g, ' ');
+    
+        // Capitalize the first letter
+        var stringWithCapitalize = stringWithSpaces.charAt(0).toUpperCase() + stringWithSpaces.slice(1);
+    
+        return stringWithCapitalize;
+    }
+
+  window.onload = function () {
+   
+    document.body.innerHTML = document.body.innerHTML.replace(
+      /D2J08EProject-\d{3,4}/gim,
+      '<a href="https://jira.airbus.corp/browse/$&" target="_blank">$&</a>'
+    );
+
+    var links = document.querySelectorAll('a');
+
+    links.forEach(function(link) {
+        // Get the href attribute
+        var href = link.getAttribute('href');
+
+        // Check if the href attribute ends with ".html"
+        if (href.endsWith('.html')) {
+            // Extract the word before ".html"
+            var lastPart = href.substring(0, href.lastIndexOf('.html'));
+            var lastDotIndex = lastPart.lastIndexOf('.');
+            if (lastDotIndex !== -1) {
+                lastPart = lastPart.substring(lastDotIndex + 1);
+            }
+            console.log(lastPart)
+            // Set the text content to the lastPart
+            link.textContent = convertAndCapitalize(lastPart);
+        }
+    });
+
+    var h1Elements = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
+
+    h1Elements.forEach(function(h1Element) {
+        // Get the text content of the <h1> element
+        var text = h1Element.textContent;
+
+        // Extract the text before the last dot and the last dot itself
+        var lastDotIndex = text.lastIndexOf('.');
+        if (lastDotIndex !== -1) {
+            var newText = text.substring(lastDotIndex + 1);
+            h1Element.textContent = convertAndCapitalize(newText);
+        }
+    });
+
+    var activeLiElements = document.querySelectorAll('li.active');
+
+    activeLiElements.forEach(function(liElement) {
+        // Get the text content of the <li> element
+        var text = liElement.textContent;
+
+        // Extract the title between the last dot and the space
+        var lastDotIndex = text.lastIndexOf('.');
+        var lastSpaceIndex = text.lastIndexOf(' ');
+        
+        if (lastDotIndex !== -1 && lastSpaceIndex !== -1 && lastSpaceIndex > lastDotIndex) {
+            var extractedTitle = text.substring(lastDotIndex + 1, lastSpaceIndex);
+            liElement.textContent = convertAndCapitalize(extractedTitle);
+        }
+    });
+    
+    var links = document.querySelectorAll('a.reference.internal.current');
+
+    links.forEach(function(link) {
+        // Get the text content of the <a> element
+        var text = link.textContent;
+
+        // Extract the word between the last dot and the space
+        var lastDotIndex = text.lastIndexOf('.');
+        var lastSpaceIndex = text.lastIndexOf(' ');
+        
+        if (lastDotIndex !== -1 && lastSpaceIndex !== -1 && lastSpaceIndex > lastDotIndex) {
+            var extractedWord = text.substring(lastDotIndex + 1, lastSpaceIndex);
+            link.textContent = extractedWord;
+        }
+    });
+    //document.body.innerHTML = document.body.innerHTML.replaceAll(regex, '$1');
+    // Find all <dt> elements with class "field-odd" or "field-even"
+    // Find all <dt> elements with class "field-odd" or "field-even"
+    const dtElements = document.querySelectorAll('dt.field-odd, dt.field-even');
+
+    // Define a mapping of text replacements
+    const replacements = {
+    'user stories': '✅ user stories',
+    'tasks': '📝 tasks',
+    'sub-task': '📝 sub-task',
+    'sub-tasks': '📝 sub-tasks',
+    'bugs': '⚠️ bugs'
+    };
+
+    // Iterate through the <dt> elements and update their text
+    dtElements.forEach(dtElement => {
+    const textNode = dtElement.childNodes[0]; // Get the first child node (text node)
+    
+    if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+        const originalText = textNode.textContent.trim().toLowerCase();
+        const replacementText = replacements[originalText];
+        
+        if (replacementText) {
+        textNode.textContent = replacementText;
+        }
+    }
+    });
+  };
+</script>
+{% endblock %}
