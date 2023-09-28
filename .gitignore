@@ -10,7 +10,9 @@ remote_repositories/
 builds/
 !builds/.gitkeep 
 docs/
-!docs/.gitkeep 
+!docs/.gitkeep
+jira/
+!jira/.gitkeep 
 local_modules/
 !local_modules/.gitkeep 
 log/

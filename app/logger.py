@@ -10,7 +10,7 @@ import sys
 
 # Define the log folder and log file name with today's date
 log_folder = "log"
-script_path = os.getcwd()
+script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 log_folder = os.path.join(script_path, log_folder)
 os.makedirs(log_folder, exist_ok=True)
 log_file_name = os.path.join(log_folder, f"{datetime.date.today()}_log.txt")
@@ -30,7 +30,8 @@ def logger(text, log_type="info"):
 
     :param text: The text to log.
 
-    :param log_type: The type of log. Valid values are "info", "warn", "error", and "critical".
+    :param log_type: The type of log. Valid values are \
+        "info", "warn", "error", and \"critical".
 
     :return: None
     """
