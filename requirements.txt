@@ -36,3 +36,6 @@ sphinxcontrib-serializinghtml
 urllib3
 win-inet-pton
 zipp
+python-dotenv
+sphinx-copybutton
+sphinx-autodoc-typehints

@@ -1,17 +1,22 @@
 """
 This module contains utility functions used by the main script.
 """
-import datetime
 import json
 import os
 import re
 import shutil
+import stat
 import subprocess
-import zipfile
+import sys
+import threading
+import tkinter as tk
+from pathlib import Path
+
+from dotenv import load_dotenv, set_key
 
 from app.logger import logger
 
-script_path = os.getcwd()
+script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 print(script_path)
 
 
@@ -57,14 +62,15 @@ def log_and_process(to_be_processed, log_type="info"):
     if not isinstance(log_type, str):
         raise TypeError("Invalid type for log_type")
     logger(" ".join(to_be_processed), log_type)
-    subprocess.run(to_be_processed)
+    subprocess.run(to_be_processed, stdout=subprocess.DEVNULL)
 
 
 def git_checkout_pull(directory, checkout_branch):
     """
-    This function performs a git checkout master and git pull in the specified directory.
+    This function performs a git checkout master and git pull in the specified directory
 
-    :param directory: The directory where the git checkout master and git pull should be performed
+    :param directory: The directory where the git checkout master and \
+        git pull should be performed
 
     :param checkout_branch: The branch to checkout
 
@@ -103,7 +109,8 @@ def clone_repository_git(repo_url, clone_folder):
 
 def git_create_branch_if_not_exist(directory, new_branch, base_branch):
     """
-    This function performs a git checkout -b to create a new branch if it doesn't already exist.
+    This function performs a git checkout -b to create a new branch \
+        if it doesn't already exist.
 
     :param directory: The directory where the git checkout -b should be performed
 
@@ -146,7 +153,11 @@ def git_create_branch_if_not_exist(directory, new_branch, base_branch):
 
 
 def create_branch_if_not_exist(
-    root_directory, all_repositories, new_branch, base_branch
+    root_directory,
+    all_repositories,
+    new_branch,
+    base_branch,
+    progress_bar_adding_to_all,
 ):
     """
     This function creates a new branch in all repositories if it doesn't already exist.
@@ -170,7 +181,9 @@ def create_branch_if_not_exist(
     if not isinstance(base_branch, str):
         raise TypeError("Invalid type for base_branch")
     # Walk through all directories in the root_directory
-    for repo in all_repositories:
+    step = 1 / len(all_repositories)
+    progress_bar_adding_to_all.set(0)
+    for index_r, repo in enumerate(all_repositories):
         print_centered_text(repo)
         # Join the root and repo to get the complete repo path
         current_repo = os.path.join(root_directory, repo)
@@ -182,12 +195,15 @@ def create_branch_if_not_exist(
             # Perform git checkout master and git pull
             try:
                 git_create_branch_if_not_exist(current_repo, new_branch, base_branch)
+                progress_bar_adding_to_all.set((index_r + 1) * step)
             except Exception as e:
                 logger(f"Failed to process repository in {current_repo}", "error")
                 logger(e, "critical")
 
 
-def update_all_local_repositories(root_directory, all_repositories, checkout_branch):
+def update_all_local_repositories(
+    root_directory, all_repositories, checkout_branch, progress_bar_update
+):
     """
     This function performs a git checkout and git pull in all repositories.
 
@@ -196,6 +212,8 @@ def update_all_local_repositories(root_directory, all_repositories, checkout_bra
     :param all_repositories: The list of all repositories
 
     :param checkout_branch: The name of the branch to checkout
+
+    :param progress_bar_update: The progress bar to update
 
     :return: None
     """
@@ -206,8 +224,9 @@ def update_all_local_repositories(root_directory, all_repositories, checkout_bra
         raise TypeError("Invalid type for all_repositories")
     if not isinstance(checkout_branch, str):
         raise TypeError("Invalid type for checkout_branch")
+    step = 1 / len(all_repositories)
     # Walk through all directories in the root_directory
-    for repo in all_repositories:
+    for index_r, repo in enumerate(all_repositories):
         print_centered_text(repo)
         # Join the root and repo to get the complete repo path
         current_repo = os.path.join(root_directory, repo)
@@ -219,9 +238,19 @@ def update_all_local_repositories(root_directory, all_repositories, checkout_bra
             # Perform git checkout master and git pull
             try:
                 git_checkout_pull(current_repo, checkout_branch)
+                progress_bar_update.set((index_r + 1) * step)
             except Exception as e:
                 logger(f"Failed to process repository in {current_repo}", "error")
                 logger(e, "critical")
+
+
+def readonly_to_writable(foo, file, err):
+    if (
+        Path(file).suffix in [".idx", ".pack"]
+        and err[0].__name__ == "PermissionError"
+    ):
+        os.chmod(file, stat.S_IWRITE)
+        foo(file)
 
 
 def remove_directory_if_exists(directory_path):
@@ -236,7 +265,7 @@ def remove_directory_if_exists(directory_path):
         raise TypeError("Invalid type for directory_path")
     if os.path.exists(directory_path):
         try:
-            shutil.rmtree(directory_path)
+            shutil.rmtree(directory_path, onerror=readonly_to_writable)
             logger(f"Removed directory: {directory_path}")
         except Exception as e:
             logger(f"Failed to remove directory: {directory_path}", "error")
@@ -245,22 +274,29 @@ def remove_directory_if_exists(directory_path):
         logger(f"Directory not found: {directory_path}", "warn")
 
 
-def copy_modules(root_directory, all_repositories, destination_directory):
+def copy_modules(
+    root_directory, all_repositories, destination_directory, model_progress_bar
+):
     """
-    This function copies the folder_package from each repository to the destination directory.
+    This function copies the folder_package from each repository \
+        to the destination directory.
 
     :param root_directory: The root directory where the repositories are located
 
     :param all_repositories: The list of all repositories
 
-    :param destination_directory: The destination directory where the folder_package should be copied
+    :param destination_directory: The destination directory \
+        where the folder_package should be copied
+        
+    :param model_progress_bar: The progress bar to update
 
     :return: None
     """
     # Destination directory where you want to copy the folder_package
+    bar_step = 0.8 / len(all_repositories)
 
     # Loop through each repository
-    for repo_name in all_repositories:
+    for index_r, repo_name in enumerate(all_repositories):
         print_centered_text(repo_name)
 
         # Construct the source path for the folder_package
@@ -277,7 +313,6 @@ def copy_modules(root_directory, all_repositories, destination_directory):
         # if exists_and_isdir(source_directory, "database"):
         #     source_directory = os.path.join(source_directory, "database")
         #     get_package = [""]
-
         if exists_and_isdir(source_directory, "transforms-python"):
             source_directory = os.path.join(source_directory, "transforms-python")
 
@@ -315,20 +350,23 @@ def copy_modules(root_directory, all_repositories, destination_directory):
                 log_and_process(
                     ["robocopy", source_directory, folder_destination, "/MIR"]
                 )
-                # shutil.copytree(source_directory, folder_destination, dirs_exist_ok = True)
                 logger(
-                    f"Successfully copied {repo_name}'s folder_package to {destination_directory}"
+                    f"Successfully copied {repo_name}'s folder_package \
+                        to {destination_directory}"
                 )
+                model_progress_bar.set(0.2 + ((index_r + 1) * bar_step))
             except Exception as e:
                 logger(
-                    f"Failed to copy {repo_name}'s folder_package to {destination_directory}",
+                    f"Failed to copy {repo_name}'s folder_package \
+                        to {destination_directory}",
                     "warn",
                 )
                 logger(e, "critical")
 
         else:
             logger(
-                f"Source directory for {repo_name}'s folder_package not found. Skipping...",
+                f"Source directory for {repo_name}'s folder_package\
+                    not found. Skipping...",
                 "warn",
             )
 
@@ -388,7 +426,9 @@ def remove_file_batch(packages_local, file_to_remove):
 
     :param packages_local: The directory where the file should be removed
 
-    :param file_to_remove: The name of the file to remove
+    :param file_to_remove: The name of the file to remove*
+
+    :return: None
     """
     # Traverse directories and subdirectories
     for root, dirs, files in os.walk(packages_local):
@@ -397,49 +437,6 @@ def remove_file_batch(packages_local, file_to_remove):
                 file_path = os.path.join(root, file)
                 remove_file(file_path)
     logger(f"{file_to_remove} is removed!")
-
-
-def create_zip_file(password):
-    """
-    This function creates a ZIP file with password protection.
-
-    :param password: The password to use for the ZIP file
-
-    :return: None
-    """
-    if not isinstance(password, str):
-        raise TypeError("Invalid type for password")
-    # Directory to be zipped
-    logger("Creating Zip File")
-    source_directory = os.path.join(script_path, "docs", "build")
-
-    if not os.path.exists(os.path.join(script_path, "builds")):
-        os.mkdir(os.path.join(script_path, "builds"))
-
-    formatted_datetime = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    # Name of the output ZIP file
-    destination_directory = os.path.join(
-        script_path, "builds", f"build_{str(formatted_datetime)}.zip"
-    )
-
-    try:
-        # Create a ZIP file with password protection
-        with zipfile.ZipFile(destination_directory, "w", zipfile.ZIP_DEFLATED) as zipf:
-            # Add all files and subdirectories in the directory to the ZIP file
-            for foldername, subfolders, filenames in os.walk(source_directory):
-                for filename in filenames:
-                    file_path = os.path.join(foldername, filename)
-                    arcname = os.path.relpath(file_path, source_directory)
-                    zipf.write(
-                        file_path, arcname=arcname, compress_type=zipfile.ZIP_DEFLATED
-                    )
-
-        # Add a password to the ZIP file
-        zipf.setpassword(bytes(password, "utf-8"))
-        logger(f'ZIP file "{destination_directory}" created with password protection.')
-        return destination_directory, os.path.join(script_path, "builds")
-    except Exception as e:
-        logger(f"An error occurred: {str(e)}", "critical")
 
 
 def copy_file(source_file, destination_file):
@@ -465,7 +462,7 @@ def copy_file(source_file, destination_file):
         logger(f"An error occurred: {str(e)}", "critical")
 
 
-def commit_push(all_repositories, branch_name, commit_message):
+def commit_push(all_repositories, branch_name, commit_message, progress_bar_add_commit):
     """
     This function commits and pushes the changes to the remote repository.
 
@@ -475,8 +472,12 @@ def commit_push(all_repositories, branch_name, commit_message):
 
     :param commit_message: The commit message
 
+    :param progress_bar_add_commit: The progress bar to update
+
     :return: None
     """
+    step = 1 / (len(all_repositories) * 4)
+    actual_r = 1
     for repo in all_repositories:
         # Join the root and repo to get the complete repo path
         current_repo = os.path.join(script_path, "remote_repositories", repo)
@@ -484,26 +485,40 @@ def commit_push(all_repositories, branch_name, commit_message):
         try:
             # Change to the repository directory
             os.chdir(current_repo)
-
             # Checkout the branch
             log_and_process(["git", "checkout", branch_name])
-
+            actual_r += 1
+            progress_bar_add_commit.set(actual_r * step)
             # Stage all modifications
             log_and_process(["git", "add", "."])
+            actual_r += 1
+            progress_bar_add_commit.set(actual_r * step)
 
             # Commit all modifications
             log_and_process(["git", "commit", "-m", commit_message])
+            actual_r += 1
+            progress_bar_add_commit.set(actual_r * step)
 
             # Push the branch to the remote repository
             log_and_process(["git", "push", "origin", branch_name])
+            actual_r += 1
+            progress_bar_add_commit.set(actual_r * step)
 
         except subprocess.CalledProcessError as e:
             logger(f"Error in repository {current_repo}: {e}", "critical")
 
 
 def scan_all_repositories():
-    root_directory = os.path.join(script_path, "remote_repositories")
+    """
+    This function scans all repositories and adds them to repos.json.
 
+    :param: None
+
+    :return: None
+    """
+    root_directory = os.path.join(script_path, "remote_repositories")
+    if not os.path.exists(root_directory):
+        os.mkdir(root_directory)
     # List all entries (both files and directories) in the root directory
     all_entries = os.listdir(root_directory)
 
@@ -514,14 +529,7 @@ def scan_all_repositories():
         if os.path.isdir(os.path.join(root_directory, entry))
     ]
 
-    f_repo_json = os.path.join(script_path, "app/repos.json")
-
-    try:
-        with open(f_repo_json, "r") as json_file:
-            repos_data = json.load(json_file)
-    except FileNotFoundError:
-        repos_data = {}
-        logger("No repos.json file found, creating a new one", "warn")
+    repos_data, f_repo_json = get_json_data()
 
     for repo in directories_only:
         if repo not in repos_data.keys():
@@ -529,3 +537,142 @@ def scan_all_repositories():
             logger(f"Added {repo} to repos.json")
     with open(f_repo_json, "w") as json_file:
         json.dump(repos_data, json_file, indent=4)
+
+
+def create_env_file():
+    """
+    This function creates the .env file with the initial content.
+
+    :param: None
+
+    :return: None
+    """
+    # Specify the file path for the .env file
+    env_file_path = os.path.join(script_path, ".env")
+
+    # Open the .env file in write mode and write the content to it
+    if not os.path.exists(env_file_path):
+        # Define the content you want to write to the .env file
+        env_content = """\
+REQUESTS_CA_BUNDLE = 'path/to/Project.pem'
+JIRA_URL = 'https://jira.Project.corp/'
+USER_NAME = 'email'
+API_TOKEN = 'token'
+JIRA_QUERY = 'project = D2J08EProject AND issuetype in (Bug, Story, Task) order by created DESC'\
+"""
+
+        with open(env_file_path, "w") as env_file:
+            env_file.write(env_content)
+        print(f"Created {env_file_path} with initial content.")
+
+
+def update_env_file():
+    """
+    This function updates the .env file with the user's credentials.
+
+    :param: None
+
+    :return: None
+    """
+    # Load the environment variables from the .env file
+    env_file = os.path.join(script_path, ".env")
+    load_dotenv(env_file)
+
+    USER_NAME = os.environ.get("USER_NAME")
+    REQUESTS_CA_BUNDLE = os.environ.get("REQUESTS_CA_BUNDLE")
+    API_TOKEN = os.environ.get("API_TOKEN")
+    if USER_NAME == "email":
+        mail_user = tk.simpledialog.askstring("Please enter your email", "Your e-mail")
+        set_key(env_file, "USER_NAME", mail_user)
+    if REQUESTS_CA_BUNDLE == "path/to/Project.pem":
+        filepath = tk.filedialog.askopenfilename()
+        while filepath is None:
+            filepath = tk.filedialog.askopenfilename()
+        set_key(env_file, "REQUESTS_CA_BUNDLE", filepath)
+    if API_TOKEN == "token":
+        jira_api_token = tk.simpledialog.askstring(
+            "Please enter your JIRA token", "Your token"
+        )
+        set_key(env_file, "API_TOKEN", jira_api_token)
+
+
+def return_env_tokens():
+    """
+    This function returns the environment variables from the .env file.
+
+    :param: None
+
+    :return: USER_NAME, REQUESTS_CA_BUNDLE, API_TOKEN, JIRA_QUERY, JIRA_URL
+    """
+    env_file = os.path.join(script_path, ".env")
+    load_dotenv(env_file)
+
+    USER_NAME = os.environ.get("USER_NAME")
+    REQUESTS_CA_BUNDLE = os.environ.get("REQUESTS_CA_BUNDLE")
+    API_TOKEN = os.environ.get("API_TOKEN")
+    JIRA_QUERY = os.environ.get("JIRA_QUERY")
+    JIRA_URL = os.environ.get("JIRA_URL")
+
+    return USER_NAME, REQUESTS_CA_BUNDLE, API_TOKEN, JIRA_QUERY, JIRA_URL
+
+
+def get_json_data():
+    f_repo_json = os.path.join(script_path, "app/repos.json")
+    repos_data = {}
+    try:
+        with open(f_repo_json, "r") as json_file:
+            repos_data = json.load(json_file)
+    except FileNotFoundError:
+        repos_data = {}
+        logger("No repos.json file found, creating a new one", "warn")
+    return repos_data, f_repo_json
+
+
+def count_files(directory, extension):
+    """
+    This function counts the number of files in the specified directory with 
+    the specified extension.
+
+    :param directory: The directory to count the files in
+
+    :param extension: The extension of the files to count
+    """
+    count = 0
+    for root, _, files in os.walk(directory):
+        for file in files:
+            if file.endswith(extension):
+                count += 1
+    return count
+
+
+class thread_with_trace(threading.Thread):
+    def __init__(self, *args, **keywords):
+        threading.Thread.__init__(self, *args, **keywords)
+        self.killed = False
+
+    def start(self):
+        self.__run_backup = self.run
+        self.run = self.__run
+        threading.Thread.start(self)
+
+    def __run(self):
+        sys.settrace(self.globaltrace)
+        self.__run_backup()
+        self.run = self.__run_backup
+
+    def globaltrace(self, frame, event, arg):
+        return self.localtrace if event == "call" else None
+
+    def localtrace(self, frame, event, arg):
+        if self.killed:
+            if event == "line":
+                raise SystemExit()
+        return self.localtrace
+
+    def kill(self):
+        self.killed = True
+
+
+def func():
+    while True:
+        print("thread running")

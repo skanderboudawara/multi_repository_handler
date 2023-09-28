@@ -40,6 +40,8 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.extlinks",
     "sphinx.ext.viewcode",
+    "sphinx_copybutton",
+    "sphinx_autodoc_typehints",
 ]
 
 autodoc_class_signature = "separated"
@@ -74,7 +76,7 @@ master_doc = "index"
 
 html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]
-html_short_title = "%s-%s" % (project, version)
+html_short_title = f"{project}-{version}"
 html_show_sourcelink = True
 html_use_modindex = True
 html_logo = "_static/logo.png"
