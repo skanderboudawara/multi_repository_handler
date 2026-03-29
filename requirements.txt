@@ -1,7 +1,7 @@
 alabaster
 Babel
 Brotli
-certifi==2023.7.22
+certifi==2024.7.4
 charset-normalizer
 colorama
 customtkinter==5.2.0
